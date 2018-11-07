@@ -59,15 +59,11 @@ INSTALL_TARGET="$1"
 shift
 INSTALL_OPTIONS="$*"
 
-if [ -z "$SCRIPT_CONF" ]; then
-	SCRIPT_CONF="$SCRIPT_PATH/$SCRIPT_NAME.conf"
-fi
+[ -z "$SCRIPT_CONF" ] && SCRIPT_CONF="$SCRIPT_PATH/$SCRIPT_NAME.conf"
 
 [ ! -f "$CONF_FILE" ] && doErrorExit "Config file not found ('%s')" "$CONF_FILE"
 
-if [ -z "$INSTALL_TARGET" ]; then
-	INSTALL_TARGET="base"
-fi
+[ -z "$INSTALL_TARGET" ] && INSTALL_TARGET="base"
 
 source "$SCRIPT_CONF"
 
@@ -145,9 +141,7 @@ doRemoveFromSu() {
 
 	local SU_USER_HOME="$(eval printf "~$SU_USER")"
 	local SU_SCRIPT_PATH="$SU_USER_HOME/$(basename "$SCRIPT_PATH")"
-	if [ -d "$SU_SCRIPT_PATH" ]; then
-		rm -r "$SU_SCRIPT_PATH"
-	fi
+	[ -d "$SU_SCRIPT_PATH" ] && rm -r "$SU_SCRIPT_PATH"
 }
 
 doCheckInstallDevice() {
@@ -740,18 +734,14 @@ doCreateSoftwareDirectory() {
 doChmodSoftwareDirectory() {
 	if [ ! -z "$SOFTWARE_CHXXX_PATH" ]; then
 		local DIR="$(eval printf "$SOFTWARE_CHXXX_PATH")"
-		if [ ! -z "$SOFTWARE_CHMOD" ]; then
-			chmod -R "$SOFTWARE_CHMOD" "$DIR"
-		fi
+		[ ! -z "$SOFTWARE_CHMOD" ] && chmod -R "$SOFTWARE_CHMOD" "$DIR"
 	fi
 }
 
 doChownSoftwareDirectory() {
 	if [ ! -z "$SOFTWARE_CHXXX_PATH" ]; then
 		local DIR="$(eval printf "$SOFTWARE_CHXXX_PATH")"
-		if [ ! -z "$SOFTWARE_CHOWN" ]; then
-			chown -R "$SOFTWARE_CHOWN" "$DIR"
-		fi
+		[ ! -z "$SOFTWARE_CHOWN" ] && chown -R "$SOFTWARE_CHOWN" "$DIR"
 	fi
 }
 
@@ -1079,34 +1069,22 @@ __END__
 doInstallPackageSets() {
 	for i in $INSTALL_PACKAGE_SETS; do
 		j="$i":pacmanBefore
-		if [ ! -z "${PACKAGE_SET[$j]}" ]; then
-			${PACKAGE_SET[$j]}
-		fi
+		[ ! -z "${PACKAGE_SET[$j]}" ] && ${PACKAGE_SET[$j]}
 
-			j="$i":pacman
-			if [ ! -z "${PACKAGE_SET[$j]}" ]; then
-				pacman -S --noconfirm --needed ${PACKAGE_SET[$j]}
-			fi
+		j="$i":pacman
+		[ ! -z "${PACKAGE_SET[$j]}" ] && pacman -S --noconfirm --needed ${PACKAGE_SET[$j]}
 
 		j="$i":pacmanAfter
-		if [ ! -z "${PACKAGE_SET[$j]}" ]; then
-			${PACKAGE_SET[$j]}
-		fi
+		[ ! -z "${PACKAGE_SET[$j]}" ] && ${PACKAGE_SET[$j]}
 
 		j="$i":yaourtBefore
-		if [ ! -z "${PACKAGE_SET[$j]}" ]; then
-			${PACKAGE_SET[$j]}
-		fi
+		[ ! -z "${PACKAGE_SET[$j]}" ] && ${PACKAGE_SET[$j]}
 
-			j="$i":yaourt
-			if [ ! -z "${PACKAGE_SET[$j]}" ]; then
-				doSuYaourt ${PACKAGE_SET[$j]}
-			fi
+		j="$i":yaourt
+		[ ! -z "${PACKAGE_SET[$j]}" ] && doSuYaourt ${PACKAGE_SET[$j]}
 
 		j="$i":yaourtAfter
-		if [ ! -z "${PACKAGE_SET[$j]}" ]; then
-			${PACKAGE_SET[$j]}
-		fi
+		[ ! -z "${PACKAGE_SET[$j]}" ] && ${PACKAGE_SET[$j]}
 	done
 }
 
