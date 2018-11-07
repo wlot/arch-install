@@ -16,6 +16,17 @@ doPrintHelpMessage() {
 	printf "Usage: ./%s [-h] [-c config] [target [options...]]\n" "$SCRIPT_FILE"
 }
 
+doErrorExit() {
+	if [ $# -gt 0 ]; then
+		FMT="$1"
+		shift
+		printf "ERROR: $FMT\n" $@
+	else
+		printf "ERROR: Unknown error\n"
+	fi
+	exit 1
+}
+
 while getopts :hc: opt; do
 	case "$opt" in
 		h)
