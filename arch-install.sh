@@ -39,18 +39,16 @@ while getopts :hc: opt; do
 			;;
 
 		:)
-			printf "ERROR: "
 			case "$OPTARG" in
 				c)
-					printf "Missing config file"
+					doErrorExit "Missing config file"
 					;;
 			esac
-			printf "\n"
-			exit 1
+			doErrorExit
 			;;
 
 		\?)
-			printf "ERROR: Invalid option ('-%s')\n" "$OPTARG"
+			doErrorExit "Invalid option ('-%s')" "$OPTARG"
 			exit 1
 			;;
 	esac
@@ -65,10 +63,7 @@ if [ -z "$SCRIPT_CONF" ]; then
 	SCRIPT_CONF="$SCRIPT_PATH/$SCRIPT_NAME.conf"
 fi
 
-if [ ! -f "$SCRIPT_CONF" ]; then
-	printf "ERROR: Config file not found ('%s')\n" "$SCRIPT_CONF"
-	exit 1
-fi
+[ ! -f "$CONF_FILE" ] && doErrorExit "Config file not found ('%s')" "$CONF_FILE"
 
 if [ -z "$INSTALL_TARGET" ]; then
 	INSTALL_TARGET="base"
@@ -156,10 +151,7 @@ doRemoveFromSu() {
 }
 
 doCheckInstallDevice() {
-	if [ ! -b "$INSTALL_DEVICE" ]; then
-		printf "ERROR: INSTALL_DEVICE is not a block device ('%s')\n" "$INSTALL_DEVICE"
-		exit 1
-	fi
+	[ ! -b "$INSTALL_DEVICE" ] && doErrorExit "INSTALL_DEVICE is not a block device ('%s')" "$INSTALL_DEVICE"
 }
 
 doConfirmInstall() {
@@ -1470,7 +1462,8 @@ case "$INSTALL_TARGET" in
 		;;
 
 	*)
-		printf "ERROR: Unknown target ('%s')\n" "$INSTALL_TARGET"
-		exit 1
+		doErrorExit "Unknown target ('%s')" "$INSTALL_TARGET"
 		;;
 esac
+
+#vim syntax=bash
