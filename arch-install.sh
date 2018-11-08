@@ -35,7 +35,7 @@ while getopts :hc: opt; do
 			;;
 
 		c)
-			SCRIPT_CONF="$OPTARG"
+			CONF_FILE="$OPTARG"
 			;;
 
 		:)
@@ -59,29 +59,27 @@ INSTALL_TARGET="$1"
 shift
 INSTALL_OPTIONS="$*"
 
-[ -z "$SCRIPT_CONF" ] && SCRIPT_CONF="$SCRIPT_PATH/$SCRIPT_NAME.conf"
+[ -z "$CONF_FILE" ] && CONF_FILE="$SCRIPT_PATH/$SCRIPT_NAME.csv"
 
 [ ! -f "$CONF_FILE" ] && doErrorExit "Config file not found ('%s')" "$CONF_FILE"
 
 [ -z "$INSTALL_TARGET" ] && INSTALL_TARGET="base"
-
-source "$SCRIPT_CONF"
 
 # =================================================================================
 #    F U N C T I O N S
 # =================================================================================
 
 doBindToChroot() {
-	local CHROOT_SCRIPT_PATH="/mnt/root/$(dirname "$SCRIPT_PATH")"
+	local CHROOT_SCRIPT_PATH="$SCRIPT_PATH"
 
 	mount --bind $CHROOT_SCRIPT_PATH /mnt/root || doErrorExit "Bind %s to /mnt/root failed" $CHROOT_SCRIPT_PATH
 }
 
 doChroot() {
-	local IN_CHROOT_SCRIPT_PATH="/root/$(basename "$SCRIPT_PATH")"
-	local IN_CHROOT_SCRIPT_CONF="$IN_CHROOT_SCRIPT_PATH/$(basename "$SCRIPT_CONF")"
+	local IN_CHROOT_SCRIPT_PATH="/root"
+	local IN_CHROOT_CONF_FILE="$IN_CHROOT_SCRIPT_PATH/$(basename "$CONF_FILE")"
 
-	arch-chroot /mnt /usr/bin/bash -c "'$IN_CHROOT_SCRIPT_PATH/$SCRIPT_FILE' -c '$IN_CHROOT_SCRIPT_CONF' $*"
+	arch-chroot /mnt /usr/bin/bash -c "'$IN_CHROOT_SCRIPT_PATH/$SCRIPT_FILE' -c '$IN_CHROOT_CONF_FILE' $*" || doErrorExit "Chroot failed"
 }
 
 doCopyToSu() {
@@ -150,9 +148,10 @@ doConfirmInstall() {
 	fi
 
 	for i in {10..1}; do
-		doPrint "Starting in $i - Press CTRL-C to abort..."
+		printf "Starting in $i - Press CTRL-C to abort...\r"
 		sleep 1
 	done
+	printf "\n"
 }
 
 doDeactivateAllSwaps() {
@@ -194,7 +193,9 @@ doCreateNewPartitionTable() {
 }
 
 doCreateNewPartitions() {
-	local START="1"; local END="$BOOT_SIZE"
+	local START="1";
+	local END="$BOOT_SIZE"
+
 	case "$BOOT_FILESYSTEM" in
 		fat32)
 			parted -s -a optimal "$INSTALL_DEVICE" mkpart primary "$BOOT_FILESYSTEM" "${START}MiB" "${END}MiB"
@@ -254,6 +255,10 @@ doDetectDevicesLuks() {
 	LUKS_DEVICE="$INSTALL_DEVICE_PATH/${ALL_PARTITIONS[1]}"
 }
 
+isInstallDeviceSsdAndDiscard() {
+	[ "$INSTALL_DEVICE_IS_SSD" == "yes" -a "$INSTALL_DEVICE_SSD_DISCARD" == "yes" ]
+}
+
 doCreateLuks() {
 	doPrint "Formatting LUKS device"
 	local EXIT="1"
@@ -263,9 +268,8 @@ doCreateLuks() {
 	done
 
 	local SSD_DISCARD=""
-	if [ "$INSTALL_DEVICE_IS_SSD" == "yes" ] && [ "$INSTALL_DEVICE_SSD_DISCARD" == "yes" ]; then
-		SSD_DISCARD=" --allow-discards"
-	fi
+
+	isInstallDeviceSsdAndDiscard && SSD_DISCARD=" --allow-discards"
 
 	doPrint "Opening LUKS device"
 	EXIT="1"
@@ -292,11 +296,11 @@ doDetectDevicesLuksLvm() {
 doMkfs() {
 	case "$1" in
 		fat32)
-			mkfs -t fat -F 32 -n "$2" "$3"
+			mkfs -t fat -F 32 -n "$2" "$3" || doErrorExit "Create FAT32 filesystem on %s failed" "$3"
 			;;
 
 		*)
-			mkfs -t "$1" -L "$2" "$3"
+			mkfs -t "$1" -L "$2" "$3" || doErrorExit "Create %s filesystem on %s failed" "$1" "$3"
 			;;
 	esac
 }
@@ -309,39 +313,32 @@ doFormat() {
 
 doMount() {
 	local SSD_DISCARD=""
-	if [ "$INSTALL_DEVICE_IS_SSD" == "yes" ] && [ "$INSTALL_DEVICE_SSD_DISCARD" == "yes" ]; then
-		SSD_DISCARD=" -o discard"
-	fi
+	isInstallDeviceSsdAndDiscard && SSD_DISCARD="-o discard"
 
-	mount$SSD_DISCARD "$ROOT_DEVICE" /mnt
-	mkdir /mnt/boot
-	mount$SSD_DISCARD "$BOOT_DEVICE" /mnt/boot
+	mount $SSD_DISCARD "$ROOT_DEVICE" /mnt
+	[ ! -d /mnt/boot ] && mkdir /mnt/boot
+	mount $SSD_DISCARD "$BOOT_DEVICE" /mnt/boot
 
 	SSD_DISCARD=""
-	if [ "$INSTALL_DEVICE_IS_SSD" == "yes" ] && [ "$INSTALL_DEVICE_SSD_DISCARD" == "yes" ]; then
-		SSD_DISCARD=" --discard"
-	fi
+	isInstallDeviceSsdAndDiscard && SSD_DISCARD="--discard"
 
-	swapon$SSD_DISCARD "$SWAP_DEVICE"
+	swapon $SSD_DISCARD "$SWAP_DEVICE"
 }
 
 doPacstrap() {
-	pacstrap /mnt base
+	BASE_DEVEL=""
+	[ "$INSTALL_BASE_DEVEL" == "yes" ] && BASE_DEVEL="base-devel"
+	pacstrap /mnt base $BASE_DEVEL || doErrorExit "Installation of Arch Linux base failed"
 
 	doFlush
 }
 
 doGenerateFstab() {
-	genfstab -p -U /mnt >> /mnt/etc/fstab
+	genfstab -p -U /mnt >> /mnt/etc/fstab || doErrorExit "Create fstab failed"
 
-	if [ "$INSTALL_DEVICE_IS_SSD" == "yes" ] && [ "$INSTALL_DEVICE_SSD_DISCARD" == "yes" ]; then
-		cat /mnt/etc/fstab | sed -e 's/\(data=ordered\)/\1,discard/' > /tmp/fstab
-		cat /tmp/fstab > /mnt/etc/fstab
-		rm /tmp/fstab
-
-		cat /mnt/etc/fstab | sed -e 's/\(swap\s*defaults\)/\1,discard/' > /tmp/fstab
-		cat /tmp/fstab > /mnt/etc/fstab
-		rm /tmp/fstab
+	if isInstallDeviceSsdAndDiscard; then
+		sed -i -e 's/\(data=ordered\)/\1,discard/' /mnt/etc/fstab
+		sed -i -e 's/\(swap\s*defaults\)/\1,discard/' /mnt/etc/fstab
 	fi
 }
 
@@ -501,9 +498,7 @@ doDetectLuksUuid() {
 
 doEditGrubConfigLuks() {
 	local SSD_DISCARD
-	if [ "$INSTALL_DEVICE_IS_SSD" == "yes" ] && [ "$INSTALL_DEVICE_SSD_DISCARD" == "yes" ]; then
-		SSD_DISCARD=":allow-discards"
-	fi
+	isInstallDeviceSsdAndDiscard && SSD_DISCARD=":allow-discards"
 
 	cat /etc/default/grub | sed -e 's/^\(\(GRUB_CMDLINE_LINUX_DEFAULT=\)\(.*\)\)$/#\1\n\2\3/' > /tmp/default-grub
 	cat /tmp/default-grub | awk 'm = $0 ~ /^GRUB_CMDLINE_LINUX_DEFAULT=/ {
@@ -567,9 +562,7 @@ __END__
 
 doCreateGummibootEntryLuks() {
 	local SSD_DISCARD=""
-	if [ "$INSTALL_DEVICE_IS_SSD" == "yes" ] && [ "$INSTALL_DEVICE_SSD_DISCARD" == "yes" ]; then
-		SSD_DISCARD=":allow-discards"
-	fi
+	isInstallDeviceSsdAndDiscard && SSD_DISCARD=":allow-discards"
 
 	cat > /boot/loader/entries/default.conf << __END__
 title Arch Linux
@@ -590,9 +583,7 @@ __END__
 
 doCreateCrypttabLuks() {
 	local SSD_DISCARD=""
-	if [ "$INSTALL_DEVICE_IS_SSD" == "yes" ] && [ "$INSTALL_DEVICE_SSD_DISCARD" == "yes" ]; then
-		SSD_DISCARD=",discard"
-	fi
+	isInstallDeviceSsdAndDiscard && SSD_DISCARD=",discard"
 
 	cat > /etc/crypttab << __END__
 $LUKS_LVM_NAME UUID=$LUKS_UUID none luks$SSD_DISCARD
@@ -1082,9 +1073,82 @@ doUnmount() {
 	swapoff "$SWAP_DEVICE"
 }
 
+trim() {
+	local trimmed="$1"
+	trimmed="${trimmed## }"
+	trimmed="${trimmed%% }"
+	echo "$trimmed"
+}
+
+doSetConfVariable() {
+	VAR_NAME="$(trim $1)"
+	[ -z "$VAR_NAME" ] && doErrorExit "Invalid variable name"
+	shift
+	declare -g "$VAR_NAME"="$@"
+}
+
+doSetConfArray() {
+	VAR_NAME="$(trim $1)"
+	[ -z "$VAR_NAME" ] && doErrorExit "Invalid array variable name"
+	shift
+	declare -g -a "$VAR_NAME"
+
+	local IFS=\;
+	local i=0
+	for VAL in $@; do
+		declare -g "$VAR_NAME[$i]"="$VAL"
+		i=$((i + 1))
+	done
+}
+
+doInstallPackage() {
+	FUNC="doInstall${1^}"
+	type -t $FUNC && $FUNC || doInstallPackageDefault $@
+}
+
+doEnableServices() {
+	local IFS=\;
+	for SERVICE in $@; do
+		systemctl enable $SERVICE || doErrorExit "Couldn't enable service (%s)" $SERVICE
+	done
+}
+
+doInstallAurPackage() {
+	FUNC="doInstallYaourt${1^}"
+	type -t $FUNC && $FUNC || doInstallYaourtDefault $@
+}
+
+doInstallGit() {
+	echo "install git: $@"
+}
+
+doReadConfig() {
+	while IFS=, read -r tag val1 val2; do
+		case "$tag" in
+		"C") doSetConfVariable "$val1" "$val2";;
+		"CA") doSetConfArray "$val1" "$val2";;
+		esac
+	done < $CONF_FILE
+}
+
+doCheckInstallDeviceIsSsd() {
+	INSTALL_DEVICE_PATH="$(dirname "$INSTALL_DEVICE")"
+	INSTALL_DEVICE_FILE="$(basename "$INSTALL_DEVICE")"
+
+	if [ "$(cat "/sys/block/$INSTALL_DEVICE_FILE/queue/rotational")" == "0" ]; then
+		INSTALL_DEVICE_IS_SSD="yes"
+	else
+		INSTALL_DEVICE_IS_SSD="no"
+	fi
+}
+
 # =================================================================================
 #    M A I N
 # =================================================================================
+
+doReadConfig
+
+doCheckInstallDeviceIsSsd
 
 case "$INSTALL_TARGET" in
 	base)
