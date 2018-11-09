@@ -33,10 +33,10 @@ C,BOOT_LABEL,boot
 C,SWAP_LABEL,swap
 C,ROOT_LABEL,root
 C,INSTALL_BASE_DEVEL,yes
-,intel-ucode
+,intel-ucode,
 ,openssh,sshd
-,screen
-,sudo
-,vim
-A,kartina-tv
-G,http://github.com/xyz/
+,screen,
+,sudo,
+,vim,
+A,kartina-tv,
+G,http://github.com/xyz/,
